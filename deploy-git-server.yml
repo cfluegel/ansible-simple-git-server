@@ -1,0 +1,89 @@
+---
+- hosts: all
+  remote_user: root
+
+  tasks:
+    - name: add ssh keys to the root user
+      authorized_key:
+        user: root
+        state: present
+        key: "{{ item }}"
+      when:
+        - ssh_root_keys is defined
+        - ssh_root_keys | length > 0
+      with_items: "{{ ssh_root_keys }}"
+
+    - name: deactivate password authentication
+      lineinfile:
+        dest=/etc/ssh/sshd_config
+        regexp='^PasswordAuthentication'
+        line="PasswordAuthentication no"
+        state=present
+        backup=yes
+      when:
+        - ssh_root_keys is defined
+        - ssh_root_keys | length > 0
+    - name: disallow password login to the root
+      lineinfile:
+        dest: "/etc/ssh/sshd_config"
+        regexp: '^PermitRootLogin'
+        line: "PermitRootLogin prohibit-password"
+        state: present
+        backup: yes
+      when:
+        - ssh_root_keys is defined
+        - ssh_root_keys | length > 0
+    - service:
+        name: sshd
+        state: restarted
+
+    - apt:
+        name:
+          - git
+          - vim
+        update_cache: yes
+        state: present
+
+    - user:
+        create_home: yes
+        name: git
+        shell: /usr/bin/git-shell
+
+    - template:
+        src: git-shell-commands.j2
+        owner: git
+        group: git
+        dest: "/home/git/git-shell-commands"
+
+    - authorized_key:
+        user: git
+        key: "{{ item }}"
+      with_items: "{{ git_authorized_keys }}"
+
+    - file:
+        path: "{{ git_base_dir }}"
+        owner: git
+        group: git
+        state: directory
+
+    - stat:
+        path: "{{ git_base_dir }}{{ item }}"
+      with_items: "{{ git_repos }}"
+      register: "stat_result"
+
+    - file:
+        path: "{{ git_base_dir }}{{ item.item }}"
+        owner: git
+        group: git
+        state: directory
+      when:
+        - "item.stat.exists == false "
+      with_items: "{{ stat_result.results }}"
+
+    - shell:
+        cmd: "git init --bare {{ git_base_dir }}{{ item.item }}"
+      when:
+        - "item.stat.exists == false "
+      with_items: "{{ stat_result.results }}"
+      become: yes
+      become_user: git
