@@ -49,11 +49,11 @@
         name: git
         shell: /usr/bin/git-shell
 
-    - template:
-        src: git-shell-commands.j2
+    - file:
+        state: directory
+        path: "/home/git/git-shell-commands"
         owner: git
         group: git
-        dest: "/home/git/git-shell-commands"
 
     - authorized_key:
         user: git
